@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api.js';
 import { useMe } from '../App.jsx';
+import AsyncButton from '../components/AsyncButton.jsx';
 
 const MODES = [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']];
 
@@ -18,12 +19,14 @@ export default function Profile() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const toggleMode = (m) => setF({ ...f, workModes: f.workModes.includes(m) ? f.workModes.filter((x) => x !== m) : [...f.workModes, m] });
 
   async function save(e) {
     e.preventDefault(); setMsg(''); setErr('');
-    try { await api('/profile', { method: 'PUT', body: f }); await refresh(); setMsg('Saved'); } catch (x) { setErr(x.message); }
+    setSaving(true);
+    try { await api('/profile', { method: 'PUT', body: f }); await refresh(); setMsg('Saved'); } catch (x) { setErr(x.message); } finally { setSaving(false); }
   }
   async function uploadCv(e) {
     const file = e.target.files[0];
@@ -43,11 +46,11 @@ export default function Profile() {
         <p className="muted">{u.cv?.filename ? `Current: ${u.cv.filename}` : 'No CV yet. PDF or DOCX, text-based (not a scan), max 5 MB.'}</p>
         <label className="upload-zone">
           <span className="upload-icon" aria-hidden="true">↑</span>
-          <b>{u.cv?.filename ? 'Replace your CV' : 'Choose a CV to upload'}</b>
-          <span className="muted small-text">PDF or DOCX · Text-based · Max 5 MB</span>
+          <b>{uploading ? 'Uploading your CV…' : u.cv?.filename ? 'Replace your CV' : 'Choose a CV to upload'}</b>
+          <span className="muted small-text">{uploading ? 'Uploading…' : 'PDF or DOCX · Text-based · Max 5 MB'}</span>
           <input type="file" accept=".pdf,.docx" onChange={uploadCv} disabled={uploading} />
         </label>
-        {uploading && <p className="muted">Uploading…</p>}
+        {uploading && <p className="muted uploading-message" role="status">Uploading CV…</p>}
       </section>
 
       <form className="card profile-section profile-form" onSubmit={save}>
@@ -100,7 +103,7 @@ export default function Profile() {
         </div>
         {msg && <div className="ok">{msg}</div>}
         {err && <div className="err">{err}</div>}
-        <button className="btn">Save</button>
+        <AsyncButton loading={saving} loadingText="Saving…">Save</AsyncButton>
       </form>
     </>
   );

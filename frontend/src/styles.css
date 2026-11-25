@@ -101,6 +101,14 @@ input[type="file"] { position: absolute; width: 1px; height: 1px; min-height: 0;
 .btn:hover:not(:disabled) { transform: translateY(-1px); background: var(--brand-strong); border-color: var(--brand-strong); box-shadow: 0 5px 12px rgb(15 118 110 / 18%); }
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: .48; cursor: not-allowed; }
+.btn[aria-busy="true"]:disabled { gap: 8px; opacity: .82; cursor: wait; }
+.button-spinner { flex: 0 0 14px; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: button-spin .7s linear infinite; }
+@keyframes button-spin { to { transform: rotate(360deg); } }
+.link[aria-busy="true"] { display: inline-flex; align-items: center; gap: 6px; cursor: wait; }
+.loading-message { display: flex; align-items: center; gap: 10px; }
+.loading-message::before { content: ""; flex: 0 0 16px; width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--brand); border-radius: 50%; animation: button-spin .7s linear infinite; }
+.uploading-message { display: flex; align-items: center; gap: 8px; }
+.uploading-message::before { content: ""; width: 14px; height: 14px; border: 2px solid var(--line-strong); border-top-color: var(--brand); border-radius: 50%; animation: button-spin .7s linear infinite; }
 .btn.small { min-height: 40px; padding: 7px 13px; font-size: .82rem; }
 .secondary-btn { color: var(--brand); background: var(--brand-soft); border-color: transparent; }
 .secondary-btn:hover:not(:disabled) { color: #fff; }
@@ -184,6 +192,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgb(15 118 110 / 35%)
 .payment-result .muted { max-width: 430px; }
 .payment-result .btn { margin-top: var(--space-2); }
 .payment-icon { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: var(--space-2); border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-size: 1.8rem; font-weight: 700; }
+.payment-icon .button-spinner { width: 24px; height: 24px; border-width: 3px; }
 .payment-icon.success { color: var(--success); background: var(--success-soft); }
 .payment-icon.failed { color: var(--danger); background: var(--danger-soft); }
 .empty-state { min-height: 220px; place-items: center; align-content: center; text-align: center; }

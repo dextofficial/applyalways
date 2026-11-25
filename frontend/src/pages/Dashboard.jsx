@@ -2,11 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, dateTime } from '../api.js';
 import { useMe } from '../App.jsx';
+import AsyncButton from '../components/AsyncButton.jsx';
 
 export default function Dashboard() {
   const { me, refresh } = useMe();
   const [params] = useSearchParams();
   const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [busyAction, setBusyAction] = useState('');
   const { user, stats } = me;
   const sub = user.subscription || {};
   const g = params.get('gmail');
@@ -14,12 +17,41 @@ export default function Dashboard() {
   useEffect(() => { refresh(); }, []); // eslint-disable-line
 
   async function connectGmail() {
-    const { url } = await api('/gmail/auth-url');
-    window.location.href = url;
+    setBusyAction('gmail');
+    setErr('');
+    try {
+      const { url } = await api('/gmail/auth-url');
+      window.location.href = url;
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyAction('');
+    }
   }
   async function toggle() {
-    await api('/profile/automation', { method: 'POST', body: { enabled: !user.automationEnabled } });
-    refresh();
+    setBusyAction('autopilot');
+    setErr('');
+    try {
+      await api('/profile/automation', { method: 'POST', body: { enabled: !user.automationEnabled } });
+      await refresh();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyAction('');
+    }
+  }
+  async function disconnectGmail() {
+    setBusyAction('disconnect');
+    setErr('');
+    try {
+      await api('/gmail/disconnect', { method: 'POST' });
+      setMsg('Gmail disconnected');
+      await refresh();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyAction('');
+    }
   }
 
   const steps = [
@@ -35,6 +67,7 @@ export default function Dashboard() {
       {g === 'connected' && <div className="ok">Gmail connected.</div>}
       {g && g !== 'connected' && <div className="err">Gmail connection failed ({g}). Please try again.</div>}
       {msg && <div className="ok">{msg}</div>}
+      {err && <div className="err">{err}</div>}
 
       <header className="welcome-header">
         <span className="eyebrow">YOUR JOB SEARCH, SIMPLIFIED</span>
@@ -72,7 +105,7 @@ export default function Dashboard() {
             <div key={s.text} className="step">
               <span className={'step-check' + (s.done ? ' complete' : '')} aria-hidden="true">{s.done ? '✓' : ''}</span>
               <span className="step-label">{s.text}</span>
-              {!s.done && (s.to ? <Link className="btn small" to={s.to}>Go</Link> : <button className="btn small" onClick={s.action}>Connect</button>)}
+              {!s.done && (s.to ? <Link className="btn small" to={s.to}>Go</Link> : <AsyncButton className="btn small" loading={busyAction === 'gmail'} loadingText="Connecting…" onClick={s.action}>Connect</AsyncButton>)}
             </div>
           ))}
         </div>
@@ -85,13 +118,13 @@ export default function Dashboard() {
             <h2>Autopilot is {user.automationEnabled ? 'ON' : 'PAUSED'}</h2>
           </div>
           <p className="muted">We apply in small batches through the day from <b>{user.gmail.email}</b>. Replies from companies land in that Gmail inbox. Check it, and respond.</p>
-          <button className={'toggle-control' + (user.automationEnabled ? ' is-on' : '')} role="switch" aria-checked={user.automationEnabled} aria-label="Toggle autopilot" onClick={toggle}><span /></button>
-          <button className="btn secondary-btn" onClick={toggle}>{user.automationEnabled ? 'Pause autopilot' : 'Resume autopilot'}</button>
+          <button className={'toggle-control' + (user.automationEnabled ? ' is-on' : '')} role="switch" aria-checked={user.automationEnabled} aria-label="Toggle autopilot" aria-busy={busyAction === 'autopilot'} disabled={busyAction !== ''} onClick={toggle}><span /></button>
+          <AsyncButton className="btn secondary-btn" loading={busyAction === 'autopilot'} loadingText="Updating…" disabled={busyAction !== '' && busyAction !== 'autopilot'} onClick={toggle}>{user.automationEnabled ? 'Pause autopilot' : 'Resume autopilot'}</AsyncButton>
         </div>
       )}
 
       {user.gmail?.connected && (
-        <p className="muted small-text">Gmail: {user.gmail.email} · <button className="link" onClick={connectGmail}>Reconnect</button> · <button className="link" onClick={async () => { await api('/gmail/disconnect', { method: 'POST' }); setMsg('Gmail disconnected'); refresh(); }}>Disconnect</button></p>
+        <p className="muted small-text">Gmail: {user.gmail.email} · <AsyncButton className="link" loading={busyAction === 'gmail'} loadingText="Connecting…" disabled={busyAction !== '' && busyAction !== 'gmail'} onClick={connectGmail}>Reconnect</AsyncButton> · <AsyncButton className="link" loading={busyAction === 'disconnect'} loadingText="Disconnecting…" disabled={busyAction !== '' && busyAction !== 'disconnect'} onClick={disconnectGmail}>Disconnect</AsyncButton></p>
       )}
       <p className="muted small-text">We send applications for you; we cannot promise interviews or jobs.</p>
     </>

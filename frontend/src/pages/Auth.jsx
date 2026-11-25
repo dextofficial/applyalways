@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, setToken, APP_NAME } from '../api.js';
 import { useMe } from '../App.jsx';
 import { ThemeToggle } from '../Theme.jsx';
+import AsyncButton from '../components/AsyncButton.jsx';
 
 export default function Auth({ mode, admin }) {
   const nav = useNavigate();
@@ -51,7 +52,7 @@ export default function Auth({ mode, admin }) {
         <label>Email address<input type="email" placeholder="you@example.com" value={f.email} onChange={set('email')} required /></label>
         <label>Password<input type="password" placeholder="At least 8 characters" value={f.password} onChange={set('password')} required minLength={8} /></label>
         {err && <div className="err">{err}</div>}
-        <button className="btn auth-submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}</button>
+        <AsyncButton className="btn auth-submit" loading={busy} loadingText="Please wait…">{mode === 'login' ? 'Log in' : 'Create account'}</AsyncButton>
         {!admin && (mode === 'login'
           ? <p className="muted">New here? <Link to="/register">Create an account</Link></p>
           : <p className="muted">Have an account? <Link to="/login">Log in</Link></p>)}
