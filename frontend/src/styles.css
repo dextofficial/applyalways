@@ -198,6 +198,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgb(15 118 110 / 35%)
 .empty-state { min-height: 220px; place-items: center; align-content: center; text-align: center; }
 .empty-state p { max-width: 330px; }
 .empty-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: var(--brand-soft); color: var(--brand); font-size: 1.4rem; }
+.loading-state .button-spinner { width: 24px; height: 24px; border-width: 3px; }
 .application-tabs { padding-bottom: var(--space-1); }
 .notification-timeline { display: grid; gap: var(--space-3); padding-left: 14px; border-left: 2px solid var(--line); }
 .notification-item { position: relative; gap: var(--space-2); }

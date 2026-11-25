@@ -5,6 +5,7 @@ import { useMe } from '../App.jsx';
 import { ThemeToggle } from '../Theme.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import AsyncButton from '../components/AsyncButton.jsx';
+import LoadingState from '../components/LoadingState.jsx';
 
 const TABS = ['Overview', 'Users', 'Applications', 'Payments', 'Plans', 'Settings', 'Promos', 'Jobs', 'Blacklist', 'Announce'];
 
@@ -113,19 +114,27 @@ function Users() {
 function Applications() {
   const [status, setStatus] = useState(''); const [page, setPage] = useState(1);
   const [d, setD] = useState({ items: [] }); const [open, setOpen] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState('');
   useEffect(() => {
     setLoading(true);
-    api(`/admin/applications?status=${status}&page=${page}`).then(setD).finally(() => setLoading(false));
+    setLoadError('');
+    api(`/admin/applications?status=${status}&page=${page}`)
+      .then((data) => {
+        if (!Array.isArray(data.items)) throw new Error('The server returned an invalid applications list.');
+        setD(data);
+      })
+      .catch((e) => setLoadError(e.message))
+      .finally(() => setLoading(false));
   }, [status, page]);
   return (
     <>
       <div className="chips">
         {[['', 'All'], ['sent', 'Sent'], ['failed', 'Failed'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={'chip' + (status === k ? ' on' : '')} onClick={() => { setStatus(k); setPage(1); }}>{l}</button>)}
       </div>
-      {loading && <p className="muted loading-message" role="status">Loading applications…</p>}
-      {!loading && d.items.length === 0 && <EmptyState title="No applications found" message={status ? `There are no ${status} applications on this page.` : 'Applications will appear here after users start applying.'} />}
-      {!loading && d.items.map((a) => (
+      {loading && <LoadingState title="Loading applications" message="Fetching application records. This may take a moment." />}
+      {!loading && loadError && <EmptyState title="Could not load applications" message={loadError} />}
+      {!loading && !loadError && d.items.length === 0 && <EmptyState title="No applications found" message={status ? `There are no ${status} applications on this page.` : 'Applications will appear here after users start applying.'} />}
+      {!loading && !loadError && d.items.map((a) => (
         <div className="card app" key={a._id}>
           <div>
             <b>{a.title}</b> <span className={'badge badge-' + a.status}>{a.status}</span>
