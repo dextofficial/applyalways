@@ -1,10 +1,24 @@
 // Scores how well a job fits a user. Returns 0 when the job is a hard mismatch.
 const lower = (s) => (s || '').toLowerCase();
+const NIGERIAN_CITIES = [
+  'abuja', 'abeokuta', 'abakaliki', 'akure', 'asaba', 'awka', 'bauchi', 'benin city',
+  'birnin kebbi', 'calabar', 'damaturu', 'enugu', 'gombe', 'gusau', 'ibadan', 'ikeja',
+  'ilorin', 'jalingo', 'jos', 'kaduna', 'kano', 'katsina', 'lagos',
+  'lafia', 'lokoja', 'maiduguri', 'makurdi', 'minna', 'owerri', 'port harcourt',
+  'sokoto', 'umuahia', 'uyo', 'yenagoa', 'yola',
+];
+
+function normalizeTitle(title) {
+  return lower(title)
+    .replace(/\bengineering\b/g, 'engineer')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 function titleMatches(title, wanted) {
-  const t = lower(title);
+  const t = normalizeTitle(title);
   return wanted.some((w) => {
-    const w1 = lower(w).trim();
+    const w1 = normalizeTitle(w);
     if (!w1) return false;
     if (t.includes(w1)) return true;
     const words = w1.split(/\s+/).filter((x) => x.length > 3);
@@ -23,8 +37,11 @@ function score(user, job) {
 
   if (job.isRemote) {
     if (!modes.includes('remote')) return 0;
-    const open = !jobLoc || /(worldwide|anywhere|global|africa|emea|international)/.test(jobLoc);
-    if (!open && ![...locs, ...home].some((l) => jobLoc.includes(l))) return 0; // region-locked elsewhere
+    const open = !jobLoc
+      || /(worldwide|anywhere|global|africa|emea|international)/.test(jobLoc)
+      || /^remote(?:\s+only)?$/.test(jobLoc);
+    const localNigerianCity = home.some((l) => l.includes('nigeria')) && NIGERIAN_CITIES.some((city) => jobLoc.includes(city));
+    if (!open && !localNigerianCity && ![...locs, ...home].some((l) => jobLoc.includes(l))) return 0; // region-locked elsewhere
   } else {
     if (!modes.includes('onsite') && !modes.includes('hybrid')) return 0;
     if (locs.length && !locs.some((l) => jobLoc.includes(l))) return 0;
