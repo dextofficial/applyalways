@@ -6,6 +6,7 @@ const { startOfDayLagos, getSettings, notify, publicUser } = require('../utils')
 const { extractEmail } = require('../services/jobs');
 const { runAll } = require('../services/runner');
 const { activate } = require('./payments');
+const { deleteUserData } = require('../services/account');
 
 router.use(auth, adminOnly);
 
@@ -71,12 +72,20 @@ router.patch('/users/:id', async (req, res) => {
     u.subscription = {
       planId: plan?._id || u.subscription?.planId, planName: plan?.name || u.subscription?.planName || 'Gift',
       applicationsPerDay: plan?.applicationsPerDay || u.subscription?.applicationsPerDay || 10,
-      expiresAt: new Date(start.getTime() + Number(req.body.grantDays) * 864e5), expiryNotified: false,
+      expiresAt: new Date(start.getTime() + Number(req.body.grantDays) * 864e5), durationDays: Number(req.body.grantDays),
+      endingNotified: false, expiryNotified: false,
     };
     await notify(u._id, 'Free access added', `You received ${req.body.grantDays} free day(s).`);
   }
   await u.save();
   res.json({ user: publicUser(u) });
+});
+
+router.delete('/users/:id', async (req, res) => {
+  const u = await User.findOne({ _id: req.params.id, role: 'user' });
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  await deleteUserData(u);
+  res.json({ ok: true });
 });
 
 // ---------- APPLICATIONS & PAYMENTS ----------

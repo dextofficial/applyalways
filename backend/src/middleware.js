@@ -7,6 +7,7 @@ async function auth(req, res, next) {
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Not logged in' });
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.purpose) return res.status(401).json({ error: 'Invalid session. Please log in again.' });
     const user = await User.findById(payload.id);
     if (!user) return res.status(401).json({ error: 'Account not found' });
     if (user.suspended) return res.status(403).json({ error: 'Your account is suspended. Contact support.' });

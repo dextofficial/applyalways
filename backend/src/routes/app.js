@@ -36,7 +36,7 @@ router.post('/notifications/read-all', auth, async (req, res) => {
 
 // ---------- GMAIL CONNECT ----------
 router.get('/gmail/auth-url', auth, (req, res) => {
-  const state = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+  const state = jwt.sign({ id: req.user._id, purpose: 'gmail-connect' }, process.env.JWT_SECRET, { expiresIn: '15m' });
   const url = oauthClient().generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent', // forces a refresh token every time
@@ -50,7 +50,8 @@ router.get('/gmail/callback', async (req, res) => {
   const back = (q) => res.redirect(`${process.env.FRONTEND_URL}/dashboard?gmail=${q}`);
   try {
     if (req.query.error) return back('denied');
-    const { id } = jwt.verify(req.query.state, process.env.JWT_SECRET);
+    const { id, purpose } = jwt.verify(req.query.state, process.env.JWT_SECRET);
+    if (purpose !== 'gmail-connect') return back('error');
     const client = oauthClient();
     const { tokens } = await client.getToken(req.query.code);
     if (!tokens.refresh_token) return back('norefresh');

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { api } from '../api.js';
+import { useNavigate } from 'react-router-dom';
+import { api, setToken } from '../api.js';
 import { useMe } from '../App.jsx';
 import AsyncButton from '../components/AsyncButton.jsx';
 
@@ -20,6 +21,8 @@ export default function Profile() {
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const nav = useNavigate();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const toggleMode = (m) => setF({ ...f, workModes: f.workModes.includes(m) ? f.workModes.filter((x) => x !== m) : [...f.workModes, m] });
 
@@ -27,6 +30,18 @@ export default function Profile() {
     e.preventDefault(); setMsg(''); setErr('');
     setSaving(true);
     try { await api('/profile', { method: 'PUT', body: f }); await refresh(); setMsg('Saved'); } catch (x) { setErr(x.message); } finally { setSaving(false); }
+  }
+  async function deleteAccount() {
+    const password = prompt('To permanently delete your account, CV, applications and alerts, type your password:');
+    if (!password) return;
+    if (!confirm('This cannot be undone. Delete your account now?')) return;
+    setDeleting(true); setMsg(''); setErr('');
+    try {
+      await api('/me', { method: 'DELETE', body: { password } });
+      setToken(null);
+      nav('/');
+      window.location.reload();
+    } catch (x) { setErr(x.message); setDeleting(false); }
   }
   async function uploadCv(e) {
     const file = e.target.files[0];
@@ -105,6 +120,12 @@ export default function Profile() {
         {err && <div className="err">{err}</div>}
         <AsyncButton loading={saving} loadingText="Saving…">Save</AsyncButton>
       </form>
+
+      <section className="card profile-section">
+        <div><span className="eyebrow">DANGER ZONE</span><h2>Delete my account</h2></div>
+        <p className="muted">Permanently removes your profile, CV, applications and alerts, and cancels Applyly's access to your Gmail. Payment records are kept for accounting. This cannot be undone.</p>
+        <AsyncButton className="btn" loading={deleting} loadingText="Deleting…" onClick={deleteAccount}>Delete my account</AsyncButton>
+      </section>
     </>
   );
 }

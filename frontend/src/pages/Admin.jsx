@@ -85,6 +85,18 @@ function Users() {
       setBusyId(null); setBusyAction('');
     }
   };
+  const remove = async (u) => {
+    if (!confirm(`Permanently delete ${u.name} (${u.email}), their CV, applications and alerts? This cannot be undone. Payment records are kept.`)) return;
+    setBusyId(u._id); setBusyAction('delete'); setActionErr('');
+    try {
+      await api(`/admin/users/${u._id}`, { method: 'DELETE' });
+      load();
+    } catch (e) {
+      setActionErr(e.message);
+    } finally {
+      setBusyId(null); setBusyAction('');
+    }
+  };
   return (
     <>
       <label>Search users<input placeholder="Name or email" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></label>
@@ -102,6 +114,7 @@ function Users() {
             <div className="row">
               <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'suspend'} loadingText="Updating…" disabled={busyId !== null} onClick={() => patch(u._id, { suspended: !u.suspended }, 'suspend')}>{u.suspended ? 'Unsuspend' : 'Suspend'}</AsyncButton>
               <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'grant'} loadingText="Granting…" disabled={busyId !== null} onClick={() => { const n = prompt('Grant how many free days?', '7'); if (n) patch(u._id, { grantDays: Number(n) }, 'grant'); }}>Grant days</AsyncButton>
+              <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'delete'} loadingText="Deleting…" disabled={busyId !== null} onClick={() => remove(u)}>Delete user</AsyncButton>
             </div>
           </div>
         );

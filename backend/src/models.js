@@ -24,7 +24,7 @@ const userSchema = new Schema(
       salaryPeriod: { type: String, enum: ['month', 'year'], default: 'month' },
       summary: String,
     },
-    cv: { url: String, publicId: String, filename: String, mime: String, text: String },
+    cv: { url: String, publicId: String, filename: String, mime: String, text: String, authenticated: Boolean },
     gmail: {
       connected: { type: Boolean, default: false },
       email: String,
@@ -35,6 +35,8 @@ const userSchema = new Schema(
       planName: String,
       applicationsPerDay: Number,
       expiresAt: Date,
+      durationDays: Number,
+      endingNotified: { type: Boolean, default: false },
       expiryNotified: { type: Boolean, default: false },
     },
   },

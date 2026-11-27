@@ -16,7 +16,9 @@ if (missing.length) {
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL }));
+// FRONTEND_URL is the main site. EXTRA_ORIGINS (optional, comma separated) lets other addresses call the API too, e.g. https://www.yourdomain.com
+const origins = [process.env.FRONTEND_URL, ...(process.env.EXTRA_ORIGINS || '').split(',')].map((o) => o.trim()).filter(Boolean);
+app.use(cors({ origin: origins }));
 // keep the raw body: Paystack signs it and we must verify the signature
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => (req.rawBody = buf) }));
 app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 600 }));

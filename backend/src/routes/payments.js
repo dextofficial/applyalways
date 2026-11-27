@@ -32,7 +32,8 @@ async function activate(paymentId) {
   const start = user.subscription?.expiresAt && user.subscription.expiresAt > now ? user.subscription.expiresAt : now;
   user.subscription = {
     planId: plan._id, planName: plan.name, applicationsPerDay: plan.applicationsPerDay,
-    expiresAt: new Date(start.getTime() + plan.durationDays * 864e5), expiryNotified: false,
+    expiresAt: new Date(start.getTime() + plan.durationDays * 864e5), durationDays: plan.durationDays,
+    endingNotified: false, expiryNotified: false,
   };
   await user.save();
   if (p.promoCode) await Promo.updateOne({ code: p.promoCode }, { $inc: { used: 1 } });

@@ -1,20 +1,28 @@
-const axios = require('axios');
 const { User, Job, Application, Blacklist } = require('../models');
 const { getSettings, startOfDayLagos, notify } = require('../utils');
 const { refreshForUser } = require('./jobs');
 const { score } = require('./matcher');
-const { writeLetter } = require('./ai');
+const { writeLetter, AiError } = require('./ai');
 const { sendFromUser } = require('./mailer');
+const { downloadCv } = require('./storage');
 
 let running = false;
 
-async function downloadCv(user) {
-  const { data } = await axios.get(user.cv.url, { responseType: 'arraybuffer', timeout: 30000 });
-  return { filename: user.cv.filename || 'CV.pdf', mime: user.cv.mime, buffer: Buffer.from(data) };
+function gmailMessage(e) {
+  const d = e.response?.data?.error;
+  const m = (typeof d === 'object' ? d?.message : d) || e.message || 'unknown error';
+  return String(m).slice(0, 300);
+}
+
+// A problem with the job or the address is worth recording. A problem with Gmail limits or the network is not:
+// the job must stay available so it is tried again on the next run.
+function isPermanentSendError(e) {
+  const status = e.response?.status || e.code;
+  if (status === 400) return true; // bad address or message
+  return false;
 }
 
 async function processUser(user, settings, blacklist) {
-  const now = new Date();
   const sod = startOfDayLagos();
   const limit = Math.min(user.subscription.applicationsPerDay || 0, settings.maxApplicationsPerDay);
   const sentToday = await Application.countDocuments({ user: user._id, status: 'sent', createdAt: { $gte: sod } });
@@ -37,6 +45,7 @@ async function processUser(user, settings, blacklist) {
   let sent = 0;
   let manual = manualToday;
   let cv = null;
+  let aiFailures = 0;
 
   for (const { job, score: sc } of ranked) {
     if (sent >= budget) break;
@@ -54,44 +63,71 @@ async function processUser(user, settings, blacklist) {
       continue;
     }
 
+    // 1. Get the CV. If this fails, skip the user for this run and try again next time.
     try {
-      cv = cv || (await downloadCv(user));
-      const body = await writeLetter({ user, job, style: settings.letterStyle });
-      const subject = `Application for ${job.title} - ${user.name}`;
+      cv = cv || (await downloadCv(user.cv));
+    } catch (e) {
+      console.error(`CV download failed for ${user.email}:`, e.message);
+      return;
+    }
+
+    // 2. Write the letter. AI problems never use up the job, and two in a row stop this user's run.
+    let body;
+    try {
+      body = await writeLetter({ user, job, style: settings.letterStyle });
+    } catch (e) {
+      aiFailures++;
+      console.error(`Letter failed for ${user.email} (${job.title}):`, e.message);
+      if (aiFailures >= 2) return;
+      continue;
+    }
+
+    // 3. Send it.
+    const subject = `Application for ${job.title} - ${user.name}`;
+    try {
       await sendFromUser(user, { to: job.applyEmail, subject, text: body, attachment: cv });
       await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'sent' });
       sent++;
       await new Promise((r) => setTimeout(r, 4000)); // gentle pacing between emails
     } catch (e) {
-      const msg = e.response?.data?.error?.message || e.response?.data?.error || e.message;
-      await Application.create({ ...base, toEmail: job.applyEmail, status: 'failed', error: String(msg).slice(0, 300) }).catch(() => {});
-      if (/invalid_grant|unauthorized_client|invalid_credentials/i.test(String(msg)) || e.response?.status === 401) {
+      const msg = gmailMessage(e);
+      if (/invalid_grant|unauthorized_client|invalid_credentials/i.test(msg) || e.response?.status === 401) {
         user.gmail.connected = false;
         await user.save();
         await notify(user._id, 'Reconnect your Gmail', 'We lost access to your Gmail, so applications are paused. Please reconnect it in your dashboard.');
         return;
       }
+      if (isPermanentSendError(e)) {
+        await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'failed', error: msg }).catch(() => {});
+        continue;
+      }
+      // Gmail limit, temporary Google error or network problem: stop for now, keep the job for the next run.
+      console.error(`Send paused for ${user.email}:`, msg);
+      return;
     }
   }
 }
 
 async function expireNotices() {
+  const now = new Date();
   const expired = await User.find({
     role: 'user', 'subscription.planId': { $exists: true },
-    'subscription.expiresAt': { $lt: new Date() }, 'subscription.expiryNotified': false,
+    'subscription.expiresAt': { $lt: now }, 'subscription.expiryNotified': { $ne: true },
   });
   for (const u of expired) {
     await notify(u._id, 'Your plan has ended', 'Applications are paused. Renew your plan to keep applying automatically. Your data is safe.');
     u.subscription.expiryNotified = true;
     await u.save();
   }
-  const soon = new Date(Date.now() + 24 * 3600e3);
+  // "Ending soon" only makes sense for plans longer than one day
+  const soon = new Date(now.getTime() + 24 * 3600e3);
   const ending = await User.find({
-    role: 'user', 'subscription.expiresAt': { $gt: new Date(), $lt: soon }, 'subscription.expiryNotified': false,
+    role: 'user', 'subscription.expiresAt': { $gt: now, $lt: soon },
+    'subscription.endingNotified': { $ne: true }, 'subscription.durationDays': { $gt: 1 },
   });
   for (const u of ending) {
     await notify(u._id, 'Plan ending soon', 'Your plan ends within 24 hours. Renew to avoid a pause in applications.');
-    u.subscription.expiryNotified = true;
+    u.subscription.endingNotified = true;
     await u.save();
   }
 }

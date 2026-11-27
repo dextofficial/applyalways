@@ -2,10 +2,11 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const { User, Application, Notification } = require('../models');
 const { auth, sign } = require('../middleware');
 const { publicUser, getSettings, startOfDayLagos } = require('../utils');
+const { uploadCv, deleteCv } = require('../services/storage');
+const { deleteUserData } = require('../services/account');
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: { error: 'Too many attempts. Try again later.' } });
 
@@ -90,7 +91,7 @@ router.post('/profile/cv', auth, upload.single('cv'), async (req, res) => {
   try {
     const f = req.file;
     if (!f) return res.status(400).json({ error: 'Attach a CV file' });
-    const isPdf = f.mimetype === 'application/pdf';
+    const isPdf = f.mimetype === 'application/pdf' || f.originalname.toLowerCase().endsWith('.pdf');
     const isDocx = f.originalname.toLowerCase().endsWith('.docx');
     if (!isPdf && !isDocx) return res.status(400).json({ error: 'CV must be a PDF or DOCX file' });
 
@@ -100,23 +101,29 @@ router.post('/profile/cv', auth, upload.single('cv'), async (req, res) => {
     text = text.replace(/\s+\n/g, '\n').trim();
     if (text.length < 100) return res.status(400).json({ error: 'Could not read text from this CV. Use a text-based PDF or DOCX (not a scan).' });
 
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-    });
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream({ resource_type: 'raw', folder: 'applyly-cvs', public_id: `${req.user._id}-${Date.now()}${isPdf ? '.pdf' : '.docx'}` }, (err, r) => (err ? reject(err) : resolve(r)))
-        .end(f.buffer);
-    });
-    if (req.user.cv?.publicId) cloudinary.uploader.destroy(req.user.cv.publicId, { resource_type: 'raw' }).catch(() => {});
-    req.user.cv = { url: result.secure_url, publicId: result.public_id, filename: f.originalname, mime: f.mimetype, text };
+    const old = req.user.cv;
+    const result = await uploadCv(f.buffer, req.user._id, isPdf ? '.pdf' : '.docx');
+    if (old?.publicId) deleteCv(old).catch(() => {});
+    req.user.cv = { url: result.secure_url, publicId: result.public_id, filename: f.originalname, mime: f.mimetype, text, authenticated: true };
     await req.user.save();
     res.json({ user: publicUser(req.user) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'CV upload failed: ' + e.message });
+  }
+});
+
+// Self-service account deletion (asks for the password again)
+router.delete('/me', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'user') return res.status(403).json({ error: 'Admin accounts cannot be deleted here' });
+    if (!(await bcrypt.compare(req.body?.password || '', req.user.passwordHash)))
+      return res.status(400).json({ error: 'Wrong password' });
+    await deleteUserData(req.user);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('delete account failed', e.message);
+    res.status(500).json({ error: 'Could not delete the account. Please contact support.' });
   }
 });
 
