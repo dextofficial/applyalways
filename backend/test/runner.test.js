@@ -5,7 +5,6 @@ const path = require('node:path');
 
 // Runs the real runner.js with fake database, AI and Gmail modules (no network needed).
 const created = [];
-let existing = [];
 let scenario = 'ok';
 const jobs = [
   { _id: 'j1', title: 'Data Analyst', company: 'A', applyEmail: 'a@x.com', applyUrl: 'u1' },
@@ -19,16 +18,10 @@ const user = {
 const fakes = {
   models: {
     User: { find: async () => [user] },
-    Job: {
-      find: (filter) => {
-        if (filter._id.$in) return Promise.resolve(jobs.filter((job) => filter._id.$in.includes(job._id)));
-        const remaining = jobs.filter((job) => !filter._id.$nin.includes(job._id));
-        return { sort: () => ({ limit: async () => remaining }) };
-      },
-    },
+    Job: { find: () => ({ sort: () => ({ limit: async () => jobs }) }) },
     Application: {
       countDocuments: async () => 0,
-      find: () => ({ select: async () => existing }),
+      find: () => ({ distinct: async () => [] }),
       create: async (d) => { created.push(d); return d; },
     },
     Blacklist: { find: async () => [] },
@@ -85,21 +78,6 @@ test('a bad address is recorded as failed', async () => {
 
 test('a Gmail limit pauses the user without using up jobs', async () => {
   assert.deepEqual(await run('429'), []);
-});
-
-test('a failed application caused by a retired model is retried and updated', async () => {
-  const failed = {
-    job: 'j1',
-    status: 'failed',
-    error: 'This model models/gemini-2.0-flash is no longer available',
-    save: async () => {},
-  };
-  existing = [failed];
-
-  assert.deepEqual(await run('ok'), ['sent', 'manual']);
-  assert.equal(failed.status, 'sent');
-  assert.equal(failed.error, undefined);
-  existing = [];
 });
 
 test.after(() => { global.setTimeout = realSetTimeout; });

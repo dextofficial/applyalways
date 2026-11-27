@@ -113,7 +113,7 @@ GitHub is the online storage where Render and Vercel will read your code from.
 5. Copy the key (starts with `AIza`) and save it as `GEMINI_API_KEY`.
 
 **Notes:**
-- The app uses the model name `gemini-2.0-flash` by default. Google renames models over time. If letters fail later with "model not found", look at the current model names in AI Studio and change the `GEMINI_MODEL` setting on Render (Step 7).
+- The app uses the model name `gemini-2.5-flash` by default (Google shut down the older gemini-2.0 models on 1 June 2026). Google renames models over time. If letters fail later with "model not found", look at the current model names in AI Studio and change the `GEMINI_MODEL` setting on Render (Step 7).
 - The free tier has limits. When you have many users you will need to turn on billing in Google; it is cheap per letter.
 - Later, to switch to Claude: set `AI_PROVIDER=claude`, add `ANTHROPIC_API_KEY`, and set `ANTHROPIC_MODEL` to a current model name from docs.claude.com.
 
@@ -161,7 +161,7 @@ Remotive and RemoteOK ask users of their data to credit them. Check each site's 
    | `CLOUDINARY_API_SECRET` | from Step 4 |
    | `AI_PROVIDER` | `gemini` |
    | `GEMINI_API_KEY` | from Step 5 |
-   | `GEMINI_MODEL` | `gemini-2.0-flash` |
+   | `GEMINI_MODEL` | `gemini-2.5-flash` |
    | `JOOBLE_API_KEY` | from Step 6 (skip if none) |
    | `ADZUNA_APP_ID` | from Step 6 (skip if none) |
    | `ADZUNA_APP_KEY` | from Step 6 (skip if none) |
