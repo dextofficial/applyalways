@@ -1,7 +1,6 @@
 const axios = require('axios');
 
-// Gemini 2.0 models were shut down by Google on 1 June 2026. Change GEMINI_MODEL on Render if this one is retired too.
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 class AiError extends Error {
   constructor(message) {
@@ -15,6 +14,23 @@ function describe(e) {
   const msg = d?.error?.message || (typeof d?.error === 'string' ? d.error : '') || e.message;
   const status = e.response?.status ? `HTTP ${e.response.status}: ` : '';
   return `${status}${msg}`.slice(0, 300);
+}
+
+function modelUnavailable(e) {
+  const message = e.response?.data?.error?.message || '';
+  return /no longer available|model .*not found|not supported for generatecontent/i.test(message);
+}
+
+async function generateGemini(prompt, model) {
+  const generationConfig = { temperature: 0.7, maxOutputTokens: 2048 };
+  // 2.5 Flash "thinks" by default and thinking tokens use up the output budget, which can cut letters short.
+  if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  const { data } = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    { contents: [{ parts: [{ text: prompt }] }], generationConfig },
+    { headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY }, timeout: 60000 }
+  );
+  return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
 }
 
 async function complete(prompt) {
@@ -35,16 +51,14 @@ async function complete(prompt) {
       );
       return data.content?.[0]?.text || '';
     }
-    const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    const generationConfig = { temperature: 0.7, maxOutputTokens: 2048 };
-    // 2.5 Flash "thinks" by default and thinking tokens use up the output budget, which can cut letters short.
-    if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    const { data } = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      { contents: [{ parts: [{ text: prompt }] }], generationConfig },
-      { headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY }, timeout: 60000 }
-    );
-    return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
+    const model = (process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).replace(/^models\//, '');
+    try {
+      return await generateGemini(prompt, model);
+    } catch (e) {
+      if (model === DEFAULT_GEMINI_MODEL || !modelUnavailable(e)) throw e;
+      console.warn(`Gemini model "${model}" is unavailable; retrying with "${DEFAULT_GEMINI_MODEL}".`);
+      return await generateGemini(prompt, DEFAULT_GEMINI_MODEL);
+    }
   } catch (e) {
     throw new AiError(describe(e));
   }

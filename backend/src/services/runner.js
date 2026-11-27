@@ -5,6 +5,7 @@ const { score } = require('./matcher');
 const { writeLetter, AiError } = require('./ai');
 const { sendFromUser } = require('./mailer');
 const { downloadCv } = require('./storage');
+const { isRetryableModelFailure } = require('./retryPolicy');
 
 let running = false;
 
@@ -34,8 +35,17 @@ async function processUser(user, settings, blacklist) {
 
   await refreshForUser(user, settings);
 
-  const seen = await Application.find({ user: user._id }).distinct('job');
-  const recent = await Job.find({ _id: { $nin: seen } }).sort({ createdAt: -1 }).limit(800);
+  const applications = await Application.find({ user: user._id }).select('job status error');
+  const retryable = applications.filter((app) => app.status === 'failed' && isRetryableModelFailure(app.error));
+  const retryableByJob = new Map(retryable.map((app) => [String(app.job), app]));
+  const seen = applications
+    .filter((app) => !retryableByJob.has(String(app.job)))
+    .map((app) => app.job);
+  const [retryJobs, newJobs] = await Promise.all([
+    retryable.length ? Job.find({ _id: { $in: retryable.map((app) => app.job) } }) : [],
+    Job.find({ _id: { $nin: [...seen, ...retryable.map((app) => app.job)] } }).sort({ createdAt: -1 }).limit(800),
+  ]);
+  const recent = [...retryJobs, ...newJobs];
   const ranked = recent
     .map((j) => ({ job: j, score: score(user, j) }))
     .filter((x) => x.score >= settings.matchThreshold)
@@ -78,6 +88,11 @@ async function processUser(user, settings, blacklist) {
     } catch (e) {
       aiFailures++;
       console.error(`Letter failed for ${user.email} (${job.title}):`, e.message);
+      const previousFailure = retryableByJob.get(String(job._id));
+      if (previousFailure) {
+        previousFailure.error = e.message;
+        await previousFailure.save();
+      }
       if (aiFailures >= 2) return;
       continue;
     }
@@ -86,7 +101,13 @@ async function processUser(user, settings, blacklist) {
     const subject = `Application for ${job.title} - ${user.name}`;
     try {
       await sendFromUser(user, { to: job.applyEmail, subject, text: body, attachment: cv });
-      await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'sent' });
+      const previousFailure = retryableByJob.get(String(job._id));
+      if (previousFailure) {
+        Object.assign(previousFailure, { ...base, toEmail: job.applyEmail, subject, body, status: 'sent', error: undefined });
+        await previousFailure.save();
+      } else {
+        await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'sent' });
+      }
       sent++;
       await new Promise((r) => setTimeout(r, 4000)); // gentle pacing between emails
     } catch (e) {
@@ -98,7 +119,13 @@ async function processUser(user, settings, blacklist) {
         return;
       }
       if (isPermanentSendError(e)) {
-        await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'failed', error: msg }).catch(() => {});
+        const previousFailure = retryableByJob.get(String(job._id));
+        if (previousFailure) {
+          Object.assign(previousFailure, { ...base, toEmail: job.applyEmail, subject, body, status: 'failed', error: msg });
+          await previousFailure.save();
+        } else {
+          await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'failed', error: msg }).catch(() => {});
+        }
         continue;
       }
       // Gmail limit, temporary Google error or network problem: stop for now, keep the job for the next run.
