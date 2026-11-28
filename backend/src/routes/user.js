@@ -17,8 +17,9 @@ router.post('/auth/register', limiter, async (req, res) => {
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ error: 'Email already registered' });
+    const settings = await getSettings();
     const user = await User.create({
-      name, email, nationality, country: country || nationality, phone,
+      name, email, nationality, country: country || nationality, phone, credits: Math.max(0, settings.freeTrialCredits || 0),
       passwordHash: await bcrypt.hash(password, 10), role: 'user',
     });
     res.json({ token: sign(user), user: publicUser(user) });
@@ -46,12 +47,16 @@ router.get('/me', auth, async (req, res) => {
     Notification.countDocuments({ user: req.user._id, read: false }),
   ]);
   const sub = req.user.subscription || {};
+  const active = !!(sub.expiresAt && sub.expiresAt > new Date());
   res.json({
     user: publicUser(req.user),
     stats: {
       sentToday, totalSent, manualCount, unread,
-      dailyLimit: Math.min(sub.applicationsPerDay || 0, settings.maxApplicationsPerDay),
-      active: !!(sub.expiresAt && sub.expiresAt > new Date()),
+      dailyLimit: active
+        ? Math.min(sub.applicationsPerDay || 0, settings.maxApplicationsPerDay)
+        : Math.min(settings.creditDailyCap || 0, settings.maxApplicationsPerDay, req.user.credits || 0),
+      active,
+      credits: req.user.credits || 0,
     },
   });
 });
@@ -78,6 +83,15 @@ router.put('/profile', auth, async (req, res) => {
   };
   await u.save();
   res.json({ user: publicUser(u) });
+});
+
+// Companies the user never wants to apply to (for example their current employer)
+router.put('/profile/blocked', auth, async (req, res) => {
+  const raw = Array.isArray(req.body.companies) ? req.body.companies : String(req.body.companies || '').split(/[,\n]/);
+  const clean = [...new Set(raw.map((c) => String(c).trim().toLowerCase()).filter((c) => c.length >= 2))].slice(0, 50);
+  req.user.blockedCompanies = clean;
+  await req.user.save();
+  res.json({ blockedCompanies: clean });
 });
 
 router.post('/profile/automation', auth, async (req, res) => {

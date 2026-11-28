@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, setToken, APP_NAME } from '../api.js';
 import { useMe } from '../App.jsx';
@@ -11,6 +11,8 @@ export default function Auth({ mode, admin }) {
   const [f, setF] = useState({ name: '', email: '', password: '', nationality: '', phone: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [trial, setTrial] = useState(0);
+  useEffect(() => { if (mode === 'register') api('/packs').then((d) => setTrial(d.freeTrialCredits || 0)).catch(() => {}); }, [mode]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   async function submit(e) {
@@ -42,6 +44,7 @@ export default function Auth({ mode, admin }) {
           <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
           <p className="muted">{admin ? 'Owner dashboard sign in' : mode === 'login' ? 'Sign in to continue your job search.' : 'Your applications run on autopilot.'}</p>
         </div>
+        {mode === 'register' && trial > 0 && <div className="info-alert">Free to start: you get {trial} free applications. No card needed.</div>}
         {mode === 'register' && (
           <>
             <label>Full name<input placeholder="Your full name" value={f.name} onChange={set('name')} required /></label>

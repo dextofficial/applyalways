@@ -1,10 +1,11 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const { google } = require('googleapis');
-const { Application, Notification, User } = require('../models');
+const { Application, Job, Notification, User } = require('../models');
 const { auth } = require('../middleware');
 const { encrypt, notify } = require('../utils');
 const { oauthClient } = require('../services/mailer');
+const { writePrep } = require('../services/ai');
 
 // ---------- APPLICATIONS ----------
 router.get('/applications', auth, async (req, res) => {
@@ -23,6 +24,25 @@ router.get('/applications/:id', auth, async (req, res) => {
   const a = await Application.findOne({ _id: req.params.id, user: req.user._id });
   if (!a) return res.status(404).json({ error: 'Not found' });
   res.json({ application: a });
+});
+
+// Interview preparation guide for an application that was sent. Written once and saved.
+router.post('/applications/:id/prep', auth, async (req, res) => {
+  try {
+    const a = await Application.findOne({ _id: req.params.id, user: req.user._id });
+    if (!a) return res.status(404).json({ error: 'Not found' });
+    if (a.status !== 'sent') return res.status(400).json({ error: 'Interview preparation is available for applications that were sent.' });
+    if (a.prep) return res.json({ prep: a.prep });
+    const job = await Job.findById(a.job);
+    if (!job) return res.status(404).json({ error: 'This job is no longer available.' });
+    const text = await writePrep({ user: req.user, job });
+    a.prep = text;
+    await a.save();
+    res.json({ prep: text });
+  } catch (e) {
+    console.error('prep failed', e.message);
+    res.status(502).json({ error: 'Could not write the guide right now. Please try again in a few minutes.' });
+  }
 });
 
 // ---------- NOTIFICATIONS ----------

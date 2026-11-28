@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const axios = require('axios');
-const { Plan, Payment, Promo, User } = require('../models');
+const { Plan, CreditPack, Payment, Promo, User } = require('../models');
 const { auth } = require('../middleware');
 const { notify, getSettings } = require('../utils');
 
@@ -15,6 +15,13 @@ router.get('/plans', async (req, res) => {
   res.json({ plans });
 });
 
+// Public: credit packs for pay-as-you-go
+router.get('/packs', async (req, res) => {
+  const settings = await getSettings();
+  const packs = await CreditPack.find({ active: true }).sort({ sortOrder: 1, price: 1 });
+  res.json({ packs, freeTrialCredits: settings.freeTrialCredits || 0, creditDailyCap: settings.creditDailyCap || 0 });
+});
+
 router.post('/promo/check', auth, async (req, res) => {
   const p = await Promo.findOne({ code: (req.body.code || '').toUpperCase(), active: true });
   if (!p || (p.maxUses && p.used >= p.maxUses)) return res.status(404).json({ error: 'Invalid or expired code' });
@@ -25,9 +32,16 @@ async function activate(paymentId) {
   // Atomic flip pending -> success so a payment can never be applied twice
   const p = await Payment.findOneAndUpdate({ _id: paymentId, status: 'pending' }, { status: 'success', paidAt: new Date() }, { new: true });
   if (!p) return false;
-  const plan = await Plan.findById(p.plan);
   const user = await User.findById(p.user);
-  if (!plan || !user) return false;
+  if (!user) return false;
+  if (p.kind === 'credits') {
+    await User.updateOne({ _id: user._id }, { $inc: { credits: p.credits || 0 } });
+    if (p.promoCode) await Promo.updateOne({ code: p.promoCode }, { $inc: { used: 1 } });
+    await notify(user._id, 'Payment received', `${p.credits} application credits were added. Applications will start on the next run.`);
+    return true;
+  }
+  const plan = await Plan.findById(p.plan);
+  if (!plan) return false;
   const now = new Date();
   const start = user.subscription?.expiresAt && user.subscription.expiresAt > now ? user.subscription.expiresAt : now;
   user.subscription = {
@@ -43,19 +57,28 @@ async function activate(paymentId) {
 
 router.post('/payments/init', auth, async (req, res) => {
   try {
-    const plan = await Plan.findOne({ _id: req.body.planId, active: true });
-    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    // The customer buys either a plan (time based) or a credit pack (pay as you go)
+    let plan = null;
+    let pack = null;
+    if (req.body.packId) pack = await CreditPack.findOne({ _id: req.body.packId, active: true });
+    else plan = await Plan.findOne({ _id: req.body.planId, active: true });
+    const item = pack || plan;
+    if (!item) return res.status(404).json({ error: 'Item not found' });
     let discount = 0;
     let promoCode;
     if (req.body.promoCode) {
       const promo = await Promo.findOne({ code: req.body.promoCode.toUpperCase(), active: true });
       if (!promo || (promo.maxUses && promo.used >= promo.maxUses)) return res.status(400).json({ error: 'Invalid or expired promo code' });
-      discount = Math.round((plan.price * promo.percentOff) / 100);
+      discount = Math.round((item.price * promo.percentOff) / 100);
       promoCode = promo.code;
     }
-    const amount = Math.max(0, plan.price - discount);
+    const amount = Math.max(0, item.price - discount);
     const reference = 'AP_' + crypto.randomBytes(8).toString('hex');
-    const payment = await Payment.create({ user: req.user._id, plan: plan._id, planName: plan.name, reference, amount, discount, promoCode });
+    const payment = await Payment.create(
+      pack
+        ? { user: req.user._id, kind: 'credits', pack: pack._id, planName: pack.name, credits: pack.credits, reference, amount, discount, promoCode }
+        : { user: req.user._id, kind: 'plan', plan: plan._id, planName: plan.name, reference, amount, discount, promoCode }
+    );
     if (amount === 0) {
       await activate(payment._id);
       return res.json({ free: true });
@@ -65,7 +88,7 @@ router.post('/payments/init', auth, async (req, res) => {
       {
         email: req.user.email, amount: amount * 100, currency: 'NGN', reference,
         callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
-        metadata: { userId: String(req.user._id), planId: String(plan._id) },
+        metadata: { userId: String(req.user._id), itemId: String(item._id), kind: pack ? 'credits' : 'plan' },
       },
       ps()
     );

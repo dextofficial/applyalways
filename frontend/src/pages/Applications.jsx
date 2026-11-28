@@ -11,6 +11,9 @@ export default function Applications() {
   const [open, setOpen] = useState(null);
   const [openingId, setOpeningId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [prep, setPrep] = useState(null);
+  const [prepBusy, setPrepBusy] = useState(null);
+  const [prepErr, setPrepErr] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -21,8 +24,22 @@ export default function Applications() {
     try { setOpen((await api(`/applications/${id}`)).application); } finally { setOpeningId(null); }
   };
 
+  const openPrep = async (a) => {
+    setPrepBusy(a._id); setPrepErr('');
+    try {
+      const d = await api(`/applications/${a._id}/prep`, { method: 'POST' });
+      setPrep({ title: a.title, company: a.company, text: d.prep });
+    } catch (e) { setPrepErr(e.message); } finally { setPrepBusy(null); }
+  };
+
   return (
     <>
+      <header className="page-heading">
+        <span className="eyebrow">YOUR ACTIVITY</span>
+        <h1>Applications</h1>
+        <p className="muted">Read every letter we sent, open jobs to apply manually, and prepare for interviews.</p>
+      </header>
+      {prepErr && <div className="err">{prepErr}</div>}
       <div className="chips application-tabs" role="tablist" aria-label="Application status">
         {TABS.map(([k, l]) => <button key={k} className={'chip' + (tab === k ? ' on' : '')} onClick={() => { setTab(k); setPage(1); }}>{l}</button>)}
       </div>
@@ -39,7 +56,12 @@ export default function Applications() {
             {a.error && <div className="err small-text">{a.error}</div>}
           </div>
           <span className={'badge badge-' + a.status}>{a.status === 'manual' ? 'Manual' : a.status === 'failed' ? 'Failed' : 'Sent'}</span>
-          {a.status === 'sent' && <AsyncButton className="btn small" loading={openingId === a._id} disabled={openingId !== null && openingId !== a._id} loadingText="Loading…" onClick={() => view(a._id)}>Letter</AsyncButton>}
+          {a.status === 'sent' && (
+            <div className="app-actions">
+              <AsyncButton className="btn small" loading={openingId === a._id} disabled={openingId !== null && openingId !== a._id} loadingText="Loading…" onClick={() => view(a._id)}>Letter</AsyncButton>
+              <AsyncButton className="btn small secondary-btn" loading={prepBusy === a._id} disabled={prepBusy !== null && prepBusy !== a._id} loadingText="Writing…" onClick={() => openPrep(a)}>Interview prep</AsyncButton>
+            </div>
+          )}
           {a.status === 'manual' && a.applyUrl && <a className="btn small" href={a.applyUrl} target="_blank" rel="noreferrer">Open</a>}
         </div>
       ))}
@@ -48,6 +70,16 @@ export default function Applications() {
           <button className="btn small" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Prev</button>
           <span className="muted">Page {page} / {data.pages}</span>
           <button className="btn small" disabled={page >= data.pages || loading} onClick={() => setPage(page + 1)}>Next</button>
+        </div>
+      )}
+      {prep && (
+        <div className="modal" onClick={() => setPrep(null)}>
+          <div className="card letter-modal" role="dialog" aria-modal="true" aria-labelledby="prep-title" onClick={(e) => e.stopPropagation()}>
+            <div className="section-heading"><div><span className="eyebrow">INTERVIEW PREPARATION</span><h2 id="prep-title">{prep.title}{prep.company ? ` · ${prep.company}` : ''}</h2></div><button className="link modal-close" aria-label="Close" onClick={() => setPrep(null)}>×</button></div>
+            <pre className="letter">{prep.text}</pre>
+            <p className="muted small-text">Written by AI from your CV and the job. Check it before you rely on it.</p>
+            <button className="btn" onClick={() => setPrep(null)}>Close</button>
+          </div>
         </div>
       )}
       {open && (

@@ -24,10 +24,16 @@ function isPermanentSendError(e) {
 
 async function processUser(user, settings, blacklist) {
   const sod = startOfDayLagos();
-  const limit = Math.min(user.subscription.applicationsPerDay || 0, settings.maxApplicationsPerDay);
+  // A paid plan covers the day's applications. Without one, each application uses 1 credit.
+  const planActive = !!(user.subscription?.expiresAt && user.subscription.expiresAt > new Date());
+  let creditsLeft = user.credits || 0;
+  const limit = planActive
+    ? Math.min(user.subscription.applicationsPerDay || 0, settings.maxApplicationsPerDay)
+    : Math.min(settings.creditDailyCap || 0, settings.maxApplicationsPerDay);
+  if (!planActive && creditsLeft <= 0) return;
   const sentToday = await Application.countDocuments({ user: user._id, status: 'sent', createdAt: { $gte: sod } });
   const manualToday = await Application.countDocuments({ user: user._id, status: 'manual', createdAt: { $gte: sod } });
-  const remaining = limit - sentToday;
+  const remaining = planActive ? limit - sentToday : Math.min(limit - sentToday, creditsLeft);
   if (remaining <= 0) return;
   // Spread the daily quota across the day's runs so Gmail never sees a burst
   const budget = Math.min(remaining, Math.ceil(limit / Math.max(1, settings.runsPerDay)));
@@ -36,10 +42,12 @@ async function processUser(user, settings, blacklist) {
 
   const seen = await Application.find({ user: user._id }).distinct('job');
   const recent = await Job.find({ _id: { $nin: seen } }).sort({ createdAt: -1 }).limit(800);
+  const blocked = (user.blockedCompanies || []).map((c) => String(c).toLowerCase()).filter((c) => c.length >= 2);
   const ranked = recent
     .map((j) => ({ job: j, score: score(user, j) }))
     .filter((x) => x.score >= settings.matchThreshold)
     .filter((x) => !blacklist.has((x.job.company || '').toLowerCase()))
+    .filter((x) => !blocked.some((b) => (x.job.company || '').toLowerCase().includes(b)))
     .sort((a, b) => b.score - a.score);
 
   let sent = 0;
@@ -88,6 +96,15 @@ async function processUser(user, settings, blacklist) {
       await sendFromUser(user, { to: job.applyEmail, subject, text: body, attachment: cv });
       await Application.create({ ...base, toEmail: job.applyEmail, subject, body, status: 'sent' });
       sent++;
+      if (!planActive) {
+        // Only a sent application uses a credit. Failed and manual ones are free.
+        await User.updateOne({ _id: user._id, credits: { $gt: 0 } }, { $inc: { credits: -1 } });
+        creditsLeft--;
+        if (creditsLeft <= 0) {
+          await notify(user._id, 'You have used all your credits', 'Buy a credit pack or a plan in Plans to keep applying.');
+          return;
+        }
+      }
       await new Promise((r) => setTimeout(r, 4000)); // gentle pacing between emails
     } catch (e) {
       const msg = gmailMessage(e);
@@ -141,7 +158,8 @@ async function runAll() {
     const blacklist = new Set((await Blacklist.find()).map((b) => b.company));
     const users = await User.find({
       role: 'user', suspended: false, automationEnabled: true, 'gmail.connected': true,
-      'cv.url': { $exists: true }, 'subscription.expiresAt': { $gt: new Date() },
+      'cv.url': { $exists: true },
+      $or: [{ 'subscription.expiresAt': { $gt: new Date() } }, { credits: { $gt: 0 } }],
     });
     for (const u of users) {
       try {

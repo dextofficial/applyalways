@@ -508,3 +508,111 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgb(15 118 110 / 35%)
 :root[data-theme="dark"] .landing-final-cta { background: linear-gradient(140deg, #123f3b, #102d2b); }
 :root[data-theme="dark"] .landing-final-cta .btn { color: #115e59; }
 :root[data-theme="dark"] .hero-visual-orbit { border-color: rgb(91 183 166 / 28%); }
+
+/* ===== Polish pass: layout, pricing, dashboard, admin, responsive ===== */
+:root { --max-page: 1040px; }
+body { text-rendering: optimizeLegibility; }
+h1 { letter-spacing: -.035em; }
+.card { transition: border-color .18s ease, box-shadow .18s ease; }
+.page { animation: page-in .25s ease both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page > .card:hover { box-shadow: var(--shadow); }
+
+/* header: brand left, nav next to it, actions right */
+.user-top, .admin-top { gap: var(--space-3); }
+.user-top .brand-mark, .admin-top .brand-mark { margin-right: auto; }
+.top .theme-toggle { margin-left: auto; }
+.logout-link { cursor: pointer; }
+.desktop-nav { margin: 0 var(--space-3) 0 var(--space-6); }
+.user-top .desktop-nav { margin-right: auto; }
+.user-top .brand-mark { margin-right: 0; }
+.dot { vertical-align: middle; }
+
+/* dashboard */
+.dash-grid { display: grid; gap: var(--space-4); align-items: start; }
+.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stat-tile b { font-variant-numeric: tabular-nums; }
+.autopilot-card { grid-template-columns: 1fr auto; }
+.autopilot-card .small-text { grid-column: 1 / -1; }
+.welcome-header { padding-bottom: var(--space-2); }
+
+/* segmented control */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.segmented button { display: grid; justify-items: center; gap: 0; min-height: 52px; padding: 6px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 650; cursor: pointer; transition: background .16s ease, color .16s ease; }
+.segmented button small { font-size: .72rem; font-weight: 500; opacity: .85; }
+.segmented button.on { background: var(--brand); color: #fff; box-shadow: 0 4px 10px rgb(15 118 110 / 22%); }
+.segmented button:not(.on):hover { background: var(--brand-soft); color: var(--brand); }
+
+/* pricing */
+.price-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
+.pricing-card { display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; gap: var(--space-4); min-height: 0; }
+.pricing-top { display: grid; gap: var(--space-2); align-content: start; }
+.pricing-top h3 { margin: 0; font-size: 1.1rem; }
+.pricing-bottom { display: grid; gap: 4px; padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.pricing-bottom .btn { margin-top: var(--space-2); width: 100%; }
+.pricing-card.featured-plan { background: linear-gradient(180deg, var(--brand-soft), var(--card) 55%); }
+.pricing-card:hover { border-color: var(--brand); }
+.promo-card { max-width: 520px; }
+
+/* applications */
+.app-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.app { border-radius: var(--radius); }
+.app:hover { border-color: var(--line-strong); }
+.letter { line-height: 1.7; }
+
+/* sections */
+.danger-zone { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.danger-zone .eyebrow { color: var(--danger); }
+.card.cv-section { background: linear-gradient(180deg, color-mix(in srgb, var(--brand-soft) 45%, var(--card)), var(--card)); }
+
+/* admin */
+.page.wide.admin-content { width: 100%; max-width: 1120px; margin: 0; }
+.admin-card-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.admin-nav-item { text-align: left; }
+.admin-nav-item.on { font-weight: 700; }
+.admin .card .row .btn { flex: 0 0 auto; }
+.card .row { align-items: center; }
+.chips { padding-bottom: 2px; }
+
+/* tables of text: avoid horizontal scroll */
+.card, .app-details, .user-meta, .letter { overflow-wrap: anywhere; }
+img, svg { max-width: 100%; }
+
+@media (min-width: 700px) {
+  .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .price-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-actions { flex-wrap: nowrap; }
+}
+
+@media (min-width: 900px) {
+  .page { width: min(100%, var(--max-page)); }
+  .dash-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .price-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .landing-features-section .features-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .stat-tile { padding: 12px 8px; }
+  .segmented button small { display: none; }
+  .app-actions { width: 100%; }
+  .app-actions .btn { flex: 1 1 auto; }
+  .top { gap: var(--space-2); }
+  .theme-toggle-label { display: none; }
+}
+
+@media (max-width: 560px) {
+  .admin-nav { padding: var(--space-2) var(--space-3); }
+  .app { align-items: flex-start; }
+  .promo-card { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) { .page { animation: none; } }
+
+/* fixes after visual check */
+.bars { gap: 3px; overflow: hidden; }
+.bar { flex: 1 1 0; min-width: 2px; max-width: 16px; width: auto; }
+.tabs a { position: relative; }
+.tabs a .dot { position: absolute; top: 4px; left: calc(50% + 12px); margin: 0; }
+.promo-card { padding: var(--space-4); }
+.promo-card label { flex: 1 1 200px; }
+.promo-card input { min-height: 44px; }
+.public-header-inner .theme-toggle { margin-left: auto; }

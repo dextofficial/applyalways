@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const axios = require('axios');
-const { User, Plan, Payment, Application, Job, Promo, Blacklist, Notification, Settings } = require('../models');
+const { User, Plan, CreditPack, Payment, Application, Job, Promo, Blacklist, Notification, Settings } = require('../models');
 const { auth, adminOnly } = require('../middleware');
 const { startOfDayLagos, getSettings, notify, publicUser } = require('../utils');
 const { extractEmail } = require('../services/jobs');
@@ -77,6 +77,12 @@ router.patch('/users/:id', async (req, res) => {
     };
     await notify(u._id, 'Free access added', `You received ${req.body.grantDays} free day(s).`);
   }
+  if (req.body.addCredits) {
+    const n = Math.round(Number(req.body.addCredits));
+    if (!Number.isFinite(n) || Math.abs(n) > 10000) return res.status(400).json({ error: 'Enter a sensible number of credits' });
+    u.credits = Math.max(0, (u.credits || 0) + n);
+    if (n > 0) await notify(u._id, 'Free credits added', `${n} application credit(s) were added to your account.`);
+  }
   await u.save();
   res.json({ user: publicUser(u) });
 });
@@ -143,10 +149,23 @@ router.delete('/plans/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- CREDIT PACKS ----------
+router.get('/packs', async (req, res) => res.json({ packs: await CreditPack.find().sort({ sortOrder: 1, price: 1 }) }));
+router.post('/packs', async (req, res) => {
+  try { res.json({ pack: await CreditPack.create(req.body) }); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+router.put('/packs/:id', async (req, res) => {
+  try { res.json({ pack: await CreditPack.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }) }); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+router.delete('/packs/:id', async (req, res) => {
+  await CreditPack.findByIdAndUpdate(req.params.id, { active: false }); // soft delete keeps payment history intact
+  res.json({ ok: true });
+});
+
 // ---------- SETTINGS ----------
 router.get('/settings', async (req, res) => res.json({ settings: await getSettings() }));
 router.put('/settings', async (req, res) => {
-  const allowed = ['maxApplicationsPerDay', 'matchThreshold', 'runsPerDay', 'maxManualPerDay', 'letterStyle', 'sources'];
+  const allowed = ['maxApplicationsPerDay', 'matchThreshold', 'runsPerDay', 'maxManualPerDay', 'freeTrialCredits', 'creditDailyCap', 'letterStyle', 'sources'];
   const update = {};
   allowed.forEach((k) => req.body[k] !== undefined && (update[k] = req.body[k]));
   res.json({ settings: await Settings.findOneAndUpdate({ key: 'main' }, update, { new: true, upsert: true }) });

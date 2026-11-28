@@ -13,6 +13,8 @@ const userSchema = new Schema(
     country: String, // country the user lives in (used for currency/location fallback)
     suspended: { type: Boolean, default: false },
     automationEnabled: { type: Boolean, default: true },
+    credits: { type: Number, default: 0, min: 0 }, // pay-as-you-go applications. 1 credit = 1 application sent
+    blockedCompanies: [String], // companies the user never wants to apply to (matched as lowercase text)
     profile: {
       desiredTitles: [String],
       skills: [String],
@@ -59,8 +61,11 @@ const planSchema = new Schema(
 const paymentSchema = new Schema(
   {
     user: { type: ObjectId, ref: 'User', required: true },
-    plan: { type: ObjectId, ref: 'Plan', required: true },
+    kind: { type: String, enum: ['plan', 'credits'], default: 'plan' },
+    plan: { type: ObjectId, ref: 'Plan' },
     planName: String,
+    pack: { type: ObjectId, ref: 'CreditPack' },
+    credits: Number, // credits added when this payment succeeds (kind = credits)
     reference: { type: String, unique: true },
     amount: { type: Number, required: true }, // naira actually charged
     discount: { type: Number, default: 0 },
@@ -106,6 +111,7 @@ const applicationSchema = new Schema(
     score: Number,
     status: { type: String, enum: ['sent', 'failed', 'manual'], required: true },
     error: String,
+    prep: String, // interview preparation guide, written once on request
   },
   { timestamps: true }
 );
@@ -128,6 +134,8 @@ const settingsSchema = new Schema({
   matchThreshold: { type: Number, default: 55 },
   runsPerDay: { type: Number, default: 8 }, // must match how often your scheduler calls /api/cron/run
   maxManualPerDay: { type: Number, default: 15 },
+  freeTrialCredits: { type: Number, default: 5 }, // free applications given at sign-up
+  creditDailyCap: { type: Number, default: 10 }, // most applications per day for people using credits (no plan)
   letterStyle: {
     type: String,
     default: 'Warm, confident and concise. Highlight 2-3 achievements or skills from the CV that match the role.',
@@ -139,6 +147,17 @@ const settingsSchema = new Schema({
     remoteok: { type: Boolean, default: true },
   },
 });
+
+const creditPackSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    credits: { type: Number, required: true, min: 1 },
+    price: { type: Number, required: true, min: 0 }, // naira
+    active: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
 
 const promoSchema = new Schema(
   {
@@ -165,6 +184,7 @@ module.exports = {
   Application: mongoose.model('Application', applicationSchema),
   Notification: mongoose.model('Notification', notificationSchema),
   Settings: mongoose.model('Settings', settingsSchema),
+  CreditPack: mongoose.model('CreditPack', creditPackSchema),
   Promo: mongoose.model('Promo', promoSchema),
   Blacklist: mongoose.model('Blacklist', blacklistSchema),
   FetchLog: mongoose.model('FetchLog', fetchLogSchema),

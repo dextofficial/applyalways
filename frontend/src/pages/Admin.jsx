@@ -7,7 +7,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import AsyncButton from '../components/AsyncButton.jsx';
 import LoadingState from '../components/LoadingState.jsx';
 
-const TABS = ['Overview', 'Users', 'Applications', 'Payments', 'Plans', 'Settings', 'Promos', 'Jobs', 'Blacklist', 'Announce'];
+const TABS = ['Overview', 'Users', 'Applications', 'Payments', 'Plans', 'Packs', 'Settings', 'Promos', 'Jobs', 'Blacklist', 'Announce'];
 
 function Pager({ page, pages, set, loading = false }) {
   if (!pages || pages < 2) return null;
@@ -110,11 +110,12 @@ function Users() {
           <div className="card" key={u._id}>
             <b>{u.name}</b> {u.suspended && <span className="badge badge-suspended">Suspended</span>}
             <div className="muted small-text">{u.email} · {u.nationality || '-'} · joined {dateTime(u.createdAt)}</div>
-            <div className="small-text user-meta">Plan: {active ? `${u.subscription.planName} until ${dateTime(u.subscription.expiresAt)}` : 'none'} · Gmail: {u.gmail?.connected ? 'connected' : 'no'} · CV: {u.cv?.url ? 'yes' : 'no'} · Sent: {u.applicationsSent}</div>
+            <div className="small-text user-meta">Plan: {active ? `${u.subscription.planName} until ${dateTime(u.subscription.expiresAt)}` : 'none'} · Credits: {u.credits || 0} · Gmail: {u.gmail?.connected ? 'connected' : 'no'} · CV: {u.cv?.url ? 'yes' : 'no'} · Sent: {u.applicationsSent}</div>
             <div className="row">
               <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'suspend'} loadingText="Updating…" disabled={busyId !== null} onClick={() => patch(u._id, { suspended: !u.suspended }, 'suspend')}>{u.suspended ? 'Unsuspend' : 'Suspend'}</AsyncButton>
               <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'grant'} loadingText="Granting…" disabled={busyId !== null} onClick={() => { const n = prompt('Grant how many free days?', '7'); if (n) patch(u._id, { grantDays: Number(n) }, 'grant'); }}>Grant days</AsyncButton>
-              <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'delete'} loadingText="Deleting…" disabled={busyId !== null} onClick={() => remove(u)}>Delete user</AsyncButton>
+              <AsyncButton className="btn small" loading={busyId === u._id && busyAction === 'credits'} loadingText="Adding…" disabled={busyId !== null} onClick={() => { const n = prompt('Add how many free credits? (use a minus number to remove)', '5'); if (n) patch(u._id, { addCredits: Number(n) }, 'credits'); }}>Add credits</AsyncButton>
+              <AsyncButton className="btn small danger-btn" loading={busyId === u._id && busyAction === 'delete'} loadingText="Deleting…" disabled={busyId !== null} onClick={() => remove(u)}>Delete user</AsyncButton>
             </div>
           </div>
         );
@@ -181,7 +182,7 @@ function Payments() {
       {!loading && d.items.map((p) => (
         <div className="card app" key={p._id}>
           <div>
-            <b>{naira(p.amount)}</b> · {p.planName} <span className={p.status === 'success' ? 'ok inline' : 'muted'}>[{p.status}]</span>
+            <b>{naira(p.amount)}</b> · {p.planName}{p.kind === 'credits' ? ` (${p.credits} credits)` : ''} <span className={p.status === 'success' ? 'ok inline' : 'muted'}>[{p.status}]</span>
             <div className="small-text">{p.user?.name} ({p.user?.email}){p.promoCode ? ` · promo ${p.promoCode}` : ''}</div>
             <div className="muted small-text">{p.reference} · {dateTime(p.createdAt)}</div>
           </div>
@@ -258,6 +259,66 @@ function Plans() {
   );
 }
 
+function Packs() {
+  const [packs, setPacks] = useState([]);
+  const [f, setF] = useState({ name: '', credits: 10, price: 300 });
+  const [err, setErr] = useState('');
+  const [adding, setAdding] = useState(false); const [busyAction, setBusyAction] = useState('');
+  const [loading, setLoading] = useState(true);
+  const load = () => {
+    setLoading(true);
+    return api('/admin/packs').then((d) => setPacks(d.packs)).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  const add = async (e) => {
+    e.preventDefault(); setErr(''); setAdding(true);
+    try { await api('/admin/packs', { method: 'POST', body: f }); setF({ ...f, name: '' }); load(); }
+    catch (x) { setErr(x.message); } finally { setAdding(false); }
+  };
+  const edit = async (p, k, label) => {
+    const v = prompt(label, p[k]);
+    if (v === null) return;
+    setBusyAction(`${p._id}:${k}`);
+    try { await api(`/admin/packs/${p._id}`, { method: 'PUT', body: { [k]: Number(v) } }); load(); }
+    catch (x) { alert(x.message); } finally { setBusyAction(''); }
+  };
+  const toggleActive = async (p) => {
+    setBusyAction(`${p._id}:active`);
+    try { await api(`/admin/packs/${p._id}`, { method: 'PUT', body: { active: !p.active } }); load(); }
+    catch (x) { alert(x.message); } finally { setBusyAction(''); }
+  };
+  return (
+    <>
+      <p className="muted">Credit packs are for people who prefer to pay only for applications that are sent. 1 credit = 1 application. Credits never expire.</p>
+      <form className="card" onSubmit={add}>
+        <h3>New credit pack</h3>
+        <label>Pack name<input placeholder="e.g. 30 applications" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></label>
+        <div className="row">
+          <label>Credits<input type="number" min="1" value={f.credits} onChange={(e) => setF({ ...f, credits: e.target.value })} /></label>
+          <label>Price (₦)<input type="number" min="0" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} /></label>
+        </div>
+        {err && <div className="err">{err}</div>}
+        <AsyncButton loading={adding} loadingText="Adding…">Add pack</AsyncButton>
+      </form>
+      {loading && <p className="muted loading-message" role="status">Loading packs…</p>}
+      {!loading && packs.length === 0 && <EmptyState title="No credit packs" message="Add a pack above, or run the seed script to create starter packs." />}
+      <div className="admin-card-grid">
+        {!loading && packs.map((p) => (
+          <div className={'card' + (p.active ? '' : ' faded')} key={p._id}>
+            <b>{p.name}</b> {!p.active && <span className="muted">(hidden)</span>}
+            <div className="small-text">{p.credits} credits · {naira(p.price)} · {naira(Math.round(p.price / p.credits))} each</div>
+            <div className="row">
+              <AsyncButton className="btn small" loading={busyAction === `${p._id}:price`} disabled={!!busyAction} loadingText="Saving…" onClick={() => edit(p, 'price', 'New price (₦)')}>Price</AsyncButton>
+              <AsyncButton className="btn small" loading={busyAction === `${p._id}:credits`} disabled={!!busyAction} loadingText="Saving…" onClick={() => edit(p, 'credits', 'Credits in this pack')}>Credits</AsyncButton>
+              <AsyncButton className="btn small" loading={busyAction === `${p._id}:active`} disabled={!!busyAction} loadingText="Updating…" onClick={() => toggleActive(p)}>{p.active ? 'Hide' : 'Show'}</AsyncButton>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function SettingsTab() {
   const [s, setS] = useState(null); const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
@@ -277,6 +338,8 @@ function SettingsTab() {
       <label>Match threshold (0-100). Higher = pickier, fewer applications<input type="number" value={s.matchThreshold} onChange={num('matchThreshold')} /></label>
       <label>Runs per day (must equal how many times your scheduler calls the API; default 8)<input type="number" value={s.runsPerDay} onChange={num('runsPerDay')} /></label>
       <label>Max "apply manually" suggestions per user per day<input type="number" value={s.maxManualPerDay} onChange={num('maxManualPerDay')} /></label>
+      <label>Free applications given to each new user (free trial)<input type="number" min="0" value={s.freeTrialCredits ?? 0} onChange={num('freeTrialCredits')} /></label>
+      <label>Max applications per day for people using credits (no plan)<input type="number" min="1" value={s.creditDailyCap ?? 10} onChange={num('creditDailyCap')} /></label>
       <label>AI letter style instructions<textarea rows="4" value={s.letterStyle} onChange={(e) => setS({ ...s, letterStyle: e.target.value })} /></label>
       <h3>Job sources</h3>
       <div className="chips">
@@ -441,7 +504,7 @@ function Announce() {
   );
 }
 
-const VIEWS = { Overview, Users, Applications, Payments, Plans, Settings: SettingsTab, Promos, Jobs, Blacklist, Announce };
+const VIEWS = { Overview, Users, Applications, Payments, Plans, Packs, Settings: SettingsTab, Promos, Jobs, Blacklist, Announce };
 
 export default function Admin() {
   const { me } = useMe();

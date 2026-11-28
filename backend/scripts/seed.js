@@ -1,7 +1,7 @@
 // Usage: node scripts/seed.js   (creates starter plans if none exist; safe to re-run)
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { Plan, Settings } = require('../src/models');
+const { Plan, CreditPack, Settings } = require('../src/models');
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
@@ -17,6 +17,14 @@ const { Plan, Settings } = require('../src/models');
     ]);
     console.log('Starter plans created. Edit prices in the admin dashboard.');
   } else console.log('Plans already exist, nothing changed.');
+  if ((await CreditPack.countDocuments()) === 0) {
+    await CreditPack.insertMany([
+      { name: '10 applications', credits: 10, price: 300, sortOrder: 1 },
+      { name: '30 applications', credits: 30, price: 750, sortOrder: 2 },
+      { name: '100 applications', credits: 100, price: 2000, sortOrder: 3 },
+    ]);
+    console.log('Credit packs created. Edit prices in the admin dashboard.');
+  }
   await mongoose.disconnect();
 })().catch((e) => {
   console.error(e.message);

@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { COMPANY_NAME, SUPPORT_EMAIL } from '../api.js';
+import { api, naira, COMPANY_NAME, SUPPORT_EMAIL } from '../api.js';
 import { usePublicPageMeta } from './PublicLayout.jsx';
 
 const STEPS = [
   ['01', 'Upload your CV and preferences', 'Tell us about your experience, the roles you want, and where you would like to work.'],
-  ['02', 'Pick a plan', 'Choose the application pace and plan duration that work for you.'],
+  ['02', 'Start free, then choose', 'Try it with free applications. Then pick a daily plan, or buy credits and pay only for what is sent.'],
   ['03', 'Connect your Gmail', 'Authorize Applyly to send applications you request from your own email address.'],
   ['04', 'We apply for you', 'We send tailored applications and replies come directly to your inbox.'],
 ];
@@ -15,7 +15,43 @@ const FEATURES = [
   ['Work your way', 'Set your preferences for remote, hybrid, or on-site opportunities.'],
   ['Any currency', 'Set your minimum salary expectations in the currency that works for you.'],
   ['See every letter sent', 'Review your sent applications and the cover letters created for them.'],
+  ['Interview preparation', 'For jobs we applied to, get likely questions and talking points based on your CV.'],
+  ['Skip companies', 'List your current employer or any company you never want to apply to.'],
 ];
+
+function LivePricing() {
+  const [data, setData] = useState({ plans: [], packs: [], trial: 0 });
+  useEffect(() => {
+    Promise.all([api('/plans'), api('/packs')])
+      .then(([p, k]) => setData({ plans: p.plans.slice(0, 3), packs: k.packs.slice(0, 3), trial: k.freeTrialCredits }))
+      .catch(() => {});
+  }, []);
+  if (!data.plans.length && !data.packs.length) return null;
+  return (
+    <section className="landing-section" id="pricing">
+      <div className="landing-section-heading">
+        <span className="eyebrow">PRICES IN NAIRA</span>
+        <h2>Pay by the day, or pay per application</h2>
+        <p className="muted">No contract. Plans do not renew by themselves.{data.trial ? ` New accounts get ${data.trial} free applications.` : ''}</p>
+      </div>
+      <div className="price-grid">
+        {data.plans.map((p) => (
+          <div className="card pricing-card" key={p._id}>
+            <div className="pricing-top"><h3>{p.name}</h3><p className="muted">{p.applicationsPerDay} applications/day · {p.durationDays} day{p.durationDays > 1 ? 's' : ''}</p></div>
+            <div className="pricing-bottom"><b className="plan-price">{naira(p.price)}</b><span className="muted small-text">{naira(Math.round(p.price / p.durationDays))} per day</span></div>
+          </div>
+        ))}
+        {data.packs.map((p) => (
+          <div className="card pricing-card" key={p._id}>
+            <div className="pricing-top"><span className="plan-featured-label">Credits</span><h3>{p.name}</h3><p className="muted">Pay only for applications sent. Never expire.</p></div>
+            <div className="pricing-bottom"><b className="plan-price">{naira(p.price)}</b><span className="muted small-text">{naira(Math.round(p.price / p.credits))} per application</span></div>
+          </div>
+        ))}
+      </div>
+      <div><Link className="btn" to="/register">Start free <ArrowIcon /></Link></div>
+    </section>
+  );
+}
 
 function ArrowIcon() {
   return <span aria-hidden="true">↗</span>;
@@ -38,7 +74,7 @@ export default function Landing() {
             Applyly matches your preferences with job opportunities and sends applications you request, with a tailored cover letter from your own Gmail.
           </p>
           <div className="landing-hero-actions">
-            <Link className="btn" to="/register">Get started <ArrowIcon /></Link>
+            <Link className="btn" to="/register">Start free <ArrowIcon /></Link>
             <a className="btn ghost-btn" href="#how-it-works">See how it works</a>
           </div>
           <p className="landing-disclaimer">We send applications on your behalf. Jobs, interviews, and replies are not guaranteed.</p>
@@ -88,7 +124,7 @@ export default function Landing() {
         <div className="features-grid">
           {FEATURES.map(([title, copy], index) => (
             <article className="card landing-feature" key={title}>
-              <span className="feature-icon" aria-hidden="true">{['✳', '⌖', '◎', '↗'][index]}</span>
+              <span className="feature-icon" aria-hidden="true">{['✳', '⌖', '◎', '↗', '?', '⊘'][index]}</span>
               <h3>{title}</h3>
               <p className="muted">{copy}</p>
             </article>
@@ -96,14 +132,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="landing-pricing">
-        <div>
-          <span className="eyebrow">PLANS THAT FIT YOUR PACE</span>
-          <h2>Choose how many applications you want each day.</h2>
-          <p className="muted">Compare available plans and durations before you decide. Plans do not automatically renew.</p>
-        </div>
-        <Link className="btn" to="/register">Explore plans <ArrowIcon /></Link>
-      </section>
+      <LivePricing />
 
       <section className="landing-section landing-faq">
         <div className="landing-section-heading">
@@ -114,6 +143,10 @@ export default function Landing() {
           <details className="faq-item">
             <summary>Does Applyly guarantee jobs or interviews?</summary>
             <p>No. Applyly sends applications you request, but employers decide who they respond to and hire. Jobs, interviews, and replies are not guaranteed.</p>
+          </details>
+          <details className="faq-item">
+            <summary>What is a credit?</summary>
+            <p>One credit pays for one application we send. If an application fails, or the job can only be applied to on its own website, it costs nothing. Credits never expire. You can also choose a daily plan instead.</p>
           </details>
           <details className="faq-item">
             <summary>Can I stop anytime?</summary>

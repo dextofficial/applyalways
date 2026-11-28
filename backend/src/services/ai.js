@@ -17,7 +17,7 @@ function describe(e) {
   return `${status}${msg}`.slice(0, 300);
 }
 
-async function complete(prompt) {
+async function complete(prompt, maxTokens = 1000) {
   const provider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
   try {
     if (provider === 'claude') {
@@ -25,7 +25,7 @@ async function complete(prompt) {
         'https://api.anthropic.com/v1/messages',
         {
           model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
-          max_tokens: 1000,
+          max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         },
         {
@@ -36,7 +36,7 @@ async function complete(prompt) {
       return data.content?.[0]?.text || '';
     }
     const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    const generationConfig = { temperature: 0.7, maxOutputTokens: 2048 };
+    const generationConfig = { temperature: 0.7, maxOutputTokens: Math.max(2048, maxTokens * 2) };
     // 2.5 Flash "thinks" by default and thinking tokens use up the output budget, which can cut letters short.
     if (/2\.5-flash/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
     const { data } = await axios.post(
@@ -86,4 +86,30 @@ Return ONLY the email body text.`;
   return text;
 }
 
-module.exports = { writeLetter, AiError, DEFAULT_GEMINI_MODEL };
+// Interview preparation guide for one application (written once, on request)
+async function writePrep({ user, job }) {
+  const cv = (user.cv?.text || '').slice(0, 6000);
+  const prompt = `You are a careful interview coach. Prepare a candidate for an interview.
+
+CANDIDATE CV
+${cv}
+
+JOB
+Title: ${job.title}
+Company: ${job.company || 'unknown'}
+Description: ${(job.description || '').slice(0, 3000)}
+
+Write plain text only (no markdown symbols like # or **). Use these exact section titles on their own lines:
+What this role is really about
+Your strongest points for this job
+Likely interview questions
+Gaps to be ready for
+Questions to ask them
+
+Rules: 4 to 6 short items per section. Use only facts found in the CV. For "Likely interview questions" add one line after each question saying how to answer it using the CV. Keep the whole answer under 450 words.`;
+  const text = (await complete(prompt, 1200)).trim().replace(/\*\*/g, '').replace(/^#+\s*/gm, '');
+  if (text.length < 200) throw new AiError('AI guide failed quality check');
+  return text;
+}
+
+module.exports = { writePrep, writeLetter, AiError, DEFAULT_GEMINI_MODEL };

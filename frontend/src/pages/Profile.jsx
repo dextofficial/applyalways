@@ -22,6 +22,9 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [blocked, setBlocked] = useState((u.blockedCompanies || []).join(', '));
+  const [savingBlocked, setSavingBlocked] = useState(false);
+  const [blockedMsg, setBlockedMsg] = useState('');
   const nav = useNavigate();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const toggleMode = (m) => setF({ ...f, workModes: f.workModes.includes(m) ? f.workModes.filter((x) => x !== m) : [...f.workModes, m] });
@@ -30,6 +33,15 @@ export default function Profile() {
     e.preventDefault(); setMsg(''); setErr('');
     setSaving(true);
     try { await api('/profile', { method: 'PUT', body: f }); await refresh(); setMsg('Saved'); } catch (x) { setErr(x.message); } finally { setSaving(false); }
+  }
+  async function saveBlocked() {
+    setSavingBlocked(true); setBlockedMsg(''); setErr('');
+    try {
+      const d = await api('/profile/blocked', { method: 'PUT', body: { companies: blocked } });
+      setBlocked(d.blockedCompanies.join(', '));
+      await refresh();
+      setBlockedMsg('Saved. We will skip these companies.');
+    } catch (x) { setErr(x.message); } finally { setSavingBlocked(false); }
   }
   async function deleteAccount() {
     const password = prompt('To permanently delete your account, CV, applications and alerts, type your password:');
@@ -122,9 +134,19 @@ export default function Profile() {
       </form>
 
       <section className="card profile-section">
+        <div><span className="eyebrow">YOUR CONTROL</span><h2>Companies to skip</h2></div>
+        <p className="muted">We will never apply to these. Add your current employer and any company you do not want to hear from. Separate names with commas.</p>
+        <label>Company names
+          <textarea rows="2" value={blocked} onChange={(e) => setBlocked(e.target.value)} placeholder="Acme Ltd, Example Bank" />
+        </label>
+        {blockedMsg && <div className="ok">{blockedMsg}</div>}
+        <AsyncButton className="btn" loading={savingBlocked} loadingText="Saving…" onClick={saveBlocked}>Save list</AsyncButton>
+      </section>
+
+      <section className="card profile-section danger-zone">
         <div><span className="eyebrow">DANGER ZONE</span><h2>Delete my account</h2></div>
         <p className="muted">Permanently removes your profile, CV, applications and alerts, and cancels Applyly's access to your Gmail. Payment records are kept for accounting. This cannot be undone.</p>
-        <AsyncButton className="btn" loading={deleting} loadingText="Deleting…" onClick={deleteAccount}>Delete my account</AsyncButton>
+        <AsyncButton className="btn danger-btn" loading={deleting} loadingText="Deleting…" onClick={deleteAccount}>Delete my account</AsyncButton>
       </section>
     </>
   );
